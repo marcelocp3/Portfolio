@@ -1,0 +1,6 @@
+Fonte: Pocket Portfolio JSON endpoint, um endpoint publico sem chave.
+Endpoint: https://www.pocketportfolio.app/api/tickers/{TICKER}/json
+Campo usado: close
+Periodo filtrado: 2025-07-01 a 2025-12-31
+Ativos: AAPL, AMGN, AMZN, AXP, BA, CAT, CRM, CSCO, CVX, DIS, GS, HD, HON, IBM, JNJ, JPM, KO, MCD, MMM, MRK, MSFT, NKE, NVDA, PG, SHW, TRV, UNH, V, VZ, WMT
+Datas comuns geradas: 128

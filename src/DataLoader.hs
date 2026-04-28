@@ -48,12 +48,17 @@ readDouble value =
     _ -> Left $ "Numero invalido no CSV: " ++ value
 
 splitComma :: String -> [String]
-splitComma [] = [""]
-splitComma (',':xs) = "" : splitComma xs
-splitComma (x:xs) =
-  case splitComma xs of
-    [] -> [[x]]
-    y:ys -> (x:y) : ys
+splitComma = map trim . go
+  where
+    go [] = [""]
+    go (',':xs) = "" : go xs
+    go (x:xs) =
+      case go xs of
+        [] -> [[x]]
+        y:ys -> (x:y) : ys
+
+trim :: String -> String
+trim = reverse . dropWhile isSpace . reverse . dropWhile isSpace
 
 priceRowsToMarketData :: [Ticker] -> [PriceRow] -> Either String MarketData
 priceRowsToMarketData headers rows

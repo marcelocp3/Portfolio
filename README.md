@@ -27,7 +27,7 @@ Nao e necessario `cabal`, `stack` nem pacotes externos.
 
 ## Formato dos dados
 
-Crie o arquivo `data/dow30_prices_2025H2.csv` com precos diarios de 01/07/2025 a 31/12/2025.
+O repositorio inclui `data/dow30_prices_2025H2.csv` com precos diarios de fechamento de 01/07/2025 a 31/12/2025.
 
 Formato esperado:
 
@@ -44,7 +44,16 @@ O CSV deve conter:
 - precos ajustados ou precos de fechamento consistentes para todos os ativos;
 - linhas ordenadas por data crescente.
 
-O arquivo `data/sample_prices.csv` e apenas um conjunto pequeno para verificar compilacao e execucao. Ele nao substitui os dados reais exigidos pela entrega.
+O arquivo `data/sample_prices.csv` e apenas um conjunto pequeno para verificar compilacao e execucao. A base principal da entrega e `data/dow30_prices_2025H2.csv`.
+
+O arquivo real pode ser gerado com:
+
+```bash
+python3 scripts/fetch_dow_data.py
+```
+
+O script consulta o endpoint publico `https://www.pocketportfolio.app/api/tickers/{TICKER}/json`, usa o campo `close` e gera `data/dow30_prices_2025H2.csv`.
+Os metadados da coleta ficam em `data/dow30_prices_2025H2.source.txt`.
 
 ## Como compilar
 
