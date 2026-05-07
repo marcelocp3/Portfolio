@@ -103,7 +103,7 @@ Exemplo:
 --input PATH              CSV Date,TICKER1,... com precos diarios
 --choose N                quantidade de ativos por carteira (padrao: 20)
 --sims N                  simulacoes por combinacao (padrao: 1000000)
---workers N               threads de trabalho (padrao: 1)
+--workers N               threads de trabalho (padrao: autodetectar)
 --limit-combinations N    limita combinacoes para testes
 --max-weight X            peso maximo por ativo (padrao: 0.20)
 --risk-free X             taxa livre de risco anual (padrao: 0.0)
@@ -131,4 +131,44 @@ Volatilidade anualizada: ...
 Pesos:
 AAPL: ...
 ...
+```
+
+Exemplo de teste controlado:
+
+```bash
+./portfolio --input data/dow30_prices_2025H2.csv --choose 20 --sims 10000 --workers 4 --limit-combinations 100
+```
+
+```text
+Ativos no CSV: 30
+Retornos diarios calculados: 127
+Combinacoes avaliadas nesta execucao: 100
+Simulacoes por combinacao: 10000
+Workers: 4
+
+Melhor carteira encontrada:
+Sharpe anualizado: 3.576961
+Retorno anualizado: 0.315189
+Volatilidade anualizada: 0.088116
+Pesos:
+AAPL: 0.1049
+AMGN: 0.0018
+AMZN: 0.0034
+AXP: 0.0132
+BA: 0.0035
+CAT: 0.1146
+CRM: 0.0659
+CSCO: 0.1111
+CVX: 0.0787
+DIS: 0.0415
+GS: 0.0566
+HD: 0.0094
+HON: 0.0137
+IBM: 0.0016
+JNJ: 0.1224
+JPM: 0.0019
+KO: 0.0907
+MCD: 0.0808
+MRK: 0.0516
+WMT: 0.0326
 ```

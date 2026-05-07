@@ -1,8 +1,10 @@
 module Main where
 
 import Combinations (indexedChoose)
+import Control.Concurrent (setNumCapabilities)
 import Data.List (intercalate)
 import DataLoader (loadMarketData)
+import GHC.Conc (getNumProcessors)
 import Parallel (parallelMapReduceMaybe)
 import Simulation
 import System.Environment (getArgs)
@@ -35,7 +37,7 @@ defaultOptions = Options
 main :: IO ()
 main = do
   args <- getArgs
-  case parseOptions defaultOptions args of
+  case parseOptions defaultOptions args >>= validateOptions of
     Left err -> putStrLn err >> putStrLn usage
     Right options -> run options
 
@@ -45,25 +47,69 @@ run options = do
   case loaded of
     Left err -> putStrLn $ "Erro ao ler dados: " ++ err
     Right market -> do
-      let combos = maybe id take (limitCombinations options)
-                 $ indexedChoose (assetsToChoose options) (tickers market)
-          config = SimulationConfig
-            { simulationsPerCombination = simulations options
-            , maxWeight = maximumWeight options
-            , riskFreeRate = riskFree options
-            , baseSeed = seed options
-            }
-          workerCount = if workers options <= 0 then 1 else workers options
-          evaluate (indexes, symbols) =
-            evaluateCombination config (returnsMatrix market) (tickers market) indexes symbols
-          combineBest a b =
-            if sharpeRatio a >= sharpeRatio b then a else b
-      putStrLn $ "Ativos no CSV: " ++ show (length (tickers market))
-      putStrLn $ "Retornos diarios calculados: " ++ show (length (returnsMatrix market))
-      putStrLn $ "Combinacoes avaliadas nesta execucao: " ++ combinationMessage options (length (tickers market))
-      putStrLn $ "Simulacoes por combinacao: " ++ show (simulations options)
-      result <- parallelMapReduceMaybe workerCount evaluate combineBest combos
-      printBest result
+      case validateMarketOptions options market of
+        Left err -> putStrLn err
+        Right () -> do
+          workerCount <- configureWorkers (workers options)
+          let combos = maybe id take (limitCombinations options)
+                     $ indexedChoose (assetsToChoose options) (tickers market)
+              config = SimulationConfig
+                { simulationsPerCombination = simulations options
+                , maxWeight = maximumWeight options
+                , riskFreeRate = riskFree options
+                , baseSeed = seed options
+                }
+              evaluate (indexes, symbols) =
+                evaluateCombination config (returnsMatrix market) (tickers market) indexes symbols
+              combineBest a b =
+                if sharpeRatio a >= sharpeRatio b then a else b
+          putStrLn $ "Ativos no CSV: " ++ show (length (tickers market))
+          putStrLn $ "Retornos diarios calculados: " ++ show (length (returnsMatrix market))
+          putStrLn $ "Combinacoes avaliadas nesta execucao: " ++ combinationMessage options (length (tickers market))
+          putStrLn $ "Simulacoes por combinacao: " ++ show (simulations options)
+          putStrLn $ "Workers: " ++ show workerCount
+          result <- parallelMapReduceMaybe workerCount evaluate combineBest combos
+          printBest result
+
+configureWorkers :: Int -> IO Int
+configureWorkers requested
+  | requested > 0 = do
+      setNumCapabilities requested
+      pure requested
+  | otherwise = do
+      processors <- getNumProcessors
+      let detected = max 1 processors
+      setNumCapabilities detected
+      pure detected
+
+validateOptions :: Options -> Either String Options
+validateOptions options
+  | assetsToChoose options <= 0 =
+      Left "--choose deve ser maior que zero."
+  | simulations options <= 0 =
+      Left "--sims deve ser maior que zero."
+  | workers options < 0 =
+      Left "--workers deve ser zero para autodetectar ou maior que zero."
+  | maybe False (<= 0) (limitCombinations options) =
+      Left "--limit-combinations deve ser maior que zero."
+  | maximumWeight options <= 0.0 || maximumWeight options > 1.0 =
+      Left "--max-weight deve estar no intervalo (0, 1]."
+  | otherwise = Right options
+
+validateMarketOptions :: Options -> MarketData -> Either String ()
+validateMarketOptions options market
+  | assetsToChoose options > assetCount =
+      Left $ "--choose seleciona " ++ show (assetsToChoose options)
+          ++ " ativos, mas o CSV tem apenas " ++ show assetCount ++ "."
+  | feasibleCapacity + tolerance < 1.0 =
+      Left $ "Restricoes inviaveis: " ++ show (assetsToChoose options)
+          ++ " ativos com peso maximo " ++ printf "%.4f" (maximumWeight options)
+          ++ " somam no maximo " ++ printf "%.4f" feasibleCapacity ++ "."
+  | otherwise = Right ()
+  where
+    assetCount = length (tickers market)
+    feasibleCapacity = fromIntegral (assetsToChoose options) * maximumWeight options
+    tolerance = 1.0e-9
 
 printBest :: Maybe EvaluatedPortfolio -> IO ()
 printBest Nothing = putStrLn "Nenhuma carteira viavel foi encontrada."
@@ -134,7 +180,7 @@ usage = intercalate "\n"
   , "  --input PATH              CSV Date,TICKER1,... com precos diarios"
   , "  --choose N                quantidade de ativos por carteira (padrao: 20)"
   , "  --sims N                  simulacoes por combinacao (padrao: 1000000)"
-  , "  --workers N               threads de trabalho (padrao: 1)"
+  , "  --workers N               threads de trabalho (padrao: autodetectar)"
   , "  --limit-combinations N    limita combinacoes para testes"
   , "  --max-weight X            peso maximo por ativo (padrao: 0.20)"
   , "  --risk-free X             taxa livre de risco anual (padrao: 0.0)"
