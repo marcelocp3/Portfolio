@@ -2,3 +2,8 @@ portfolio
 libgmp.so
 *.hi
 *.o
+dist/
+dist-newstyle/
+cabal.project.local
+cabal.project.local~
+.ghc.environment.*

@@ -13,7 +13,7 @@ import Types
 
 data Options = Options
   { inputPath :: FilePath
-  , assetsToChoose :: Int
+  , minimumAssets :: Int
   , simulations :: Int
   , workers :: Int
   , limitCombinations :: Maybe Int
@@ -25,7 +25,7 @@ data Options = Options
 defaultOptions :: Options
 defaultOptions = Options
   { inputPath = "data/dow30_prices_2025H2.csv"
-  , assetsToChoose = 20
+  , minimumAssets = 25
   , simulations = 1000000
   , workers = 0
   , limitCombinations = Nothing
@@ -51,8 +51,9 @@ run options = do
         Left err -> putStrLn err
         Right () -> do
           workerCount <- configureWorkers (workers options)
-          let combos = maybe id take (limitCombinations options)
-                     $ indexedChoose (assetsToChoose options) (tickers market)
+          let assetCount = length (tickers market)
+              combos = maybe id take (limitCombinations options)
+                     $ eligibleCombinations (minimumAssets options) (tickers market)
               config = SimulationConfig
                 { simulationsPerCombination = simulations options
                 , maxWeight = maximumWeight options
@@ -65,7 +66,8 @@ run options = do
                 if sharpeRatio a >= sharpeRatio b then a else b
           putStrLn $ "Ativos no CSV: " ++ show (length (tickers market))
           putStrLn $ "Retornos diarios calculados: " ++ show (length (returnsMatrix market))
-          putStrLn $ "Combinacoes avaliadas nesta execucao: " ++ combinationMessage options (length (tickers market))
+          putStrLn $ "Tamanho das carteiras: " ++ assetRangeMessage options assetCount
+          putStrLn $ "Combinacoes avaliadas nesta execucao: " ++ combinationMessage options assetCount
           putStrLn $ "Simulacoes por combinacao: " ++ show (simulations options)
           putStrLn $ "Workers: " ++ show workerCount
           result <- parallelMapReduceMaybe workerCount evaluate combineBest combos
@@ -84,8 +86,8 @@ configureWorkers requested
 
 validateOptions :: Options -> Either String Options
 validateOptions options
-  | assetsToChoose options <= 0 =
-      Left "--choose deve ser maior que zero."
+  | minimumAssets options <= 0 =
+      Left "--min-assets deve ser maior que zero."
   | simulations options <= 0 =
       Left "--sims deve ser maior que zero."
   | workers options < 0 =
@@ -98,17 +100,17 @@ validateOptions options
 
 validateMarketOptions :: Options -> MarketData -> Either String ()
 validateMarketOptions options market
-  | assetsToChoose options > assetCount =
-      Left $ "--choose seleciona " ++ show (assetsToChoose options)
+  | minimumAssets options > assetCount =
+      Left $ "--min-assets seleciona no minimo " ++ show (minimumAssets options)
           ++ " ativos, mas o CSV tem apenas " ++ show assetCount ++ "."
   | feasibleCapacity + tolerance < 1.0 =
-      Left $ "Restricoes inviaveis: " ++ show (assetsToChoose options)
+      Left $ "Restricoes inviaveis: " ++ show (minimumAssets options)
           ++ " ativos com peso maximo " ++ printf "%.4f" (maximumWeight options)
           ++ " somam no maximo " ++ printf "%.4f" feasibleCapacity ++ "."
   | otherwise = Right ()
   where
     assetCount = length (tickers market)
-    feasibleCapacity = fromIntegral (assetsToChoose options) * maximumWeight options
+    feasibleCapacity = fromIntegral (minimumAssets options) * maximumWeight options
     tolerance = 1.0e-9
 
 printBest :: Maybe EvaluatedPortfolio -> IO ()
@@ -127,8 +129,20 @@ formatWeight ticker weight = ticker ++ ": " ++ printf "%.4f" weight
 combinationMessage :: Options -> Int -> String
 combinationMessage options assetCount =
   case limitCombinations options of
-    Just n -> show (min (fromIntegral n) (combinationCount assetCount (assetsToChoose options)))
-    Nothing -> show (combinationCount assetCount (assetsToChoose options))
+    Just n -> show (min (fromIntegral n) (eligibleCombinationCount (minimumAssets options) assetCount))
+    Nothing -> show (eligibleCombinationCount (minimumAssets options) assetCount)
+
+assetRangeMessage :: Options -> Int -> String
+assetRangeMessage options assetCount =
+  show (minimumAssets options) ++ " a " ++ show assetCount ++ " ativos"
+
+eligibleCombinations :: Int -> [Ticker] -> [([Int], [Ticker])]
+eligibleCombinations minAssets symbols =
+  concatMap (`indexedChoose` symbols) [minAssets .. length symbols]
+
+eligibleCombinationCount :: Int -> Int -> Integer
+eligibleCombinationCount minAssets assetCount =
+  sum [combinationCount assetCount k | k <- [minAssets .. assetCount]]
 
 combinationCount :: Int -> Int -> Integer
 combinationCount n k
@@ -142,8 +156,10 @@ parseOptions :: Options -> [String] -> Either String Options
 parseOptions opts [] = Right opts
 parseOptions opts ("--input":value:rest) =
   parseOptions opts { inputPath = value } rest
+parseOptions opts ("--min-assets":value:rest) =
+  parseInt "--min-assets" value >>= \n -> parseOptions opts { minimumAssets = n } rest
 parseOptions opts ("--choose":value:rest) =
-  parseInt "--choose" value >>= \n -> parseOptions opts { assetsToChoose = n } rest
+  parseInt "--choose" value >>= \n -> parseOptions opts { minimumAssets = n } rest
 parseOptions opts ("--sims":value:rest) =
   parseInt "--sims" value >>= \n -> parseOptions opts { simulations = n } rest
 parseOptions opts ("--workers":value:rest) =
@@ -178,7 +194,8 @@ usage = intercalate "\n"
   , ""
   , "Opcoes:"
   , "  --input PATH              CSV Date,TICKER1,... com precos diarios"
-  , "  --choose N                quantidade de ativos por carteira (padrao: 20)"
+  , "  --min-assets N           quantidade minima de ativos por carteira (padrao: 25)"
+  , "  --choose N               alias legado de --min-assets"
   , "  --sims N                  simulacoes por combinacao (padrao: 1000000)"
   , "  --workers N               threads de trabalho (padrao: autodetectar)"
   , "  --limit-combinations N    limita combinacoes para testes"

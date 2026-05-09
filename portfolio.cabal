@@ -1,0 +1,24 @@
+cabal-version: 3.0
+name: portfolio
+version: 0.1.0.0
+build-type: Simple
+
+executable portfolio
+  main-is: Main.hs
+  hs-source-dirs:
+      app
+    , src
+  other-modules:
+      Combinations
+    , DataLoader
+    , Parallel
+    , Simulation
+    , Stats
+    , Types
+  build-depends:
+      base >= 4.14 && < 5
+  ghc-options:
+      -O2
+      -threaded
+      -rtsopts
+  default-language: Haskell2010

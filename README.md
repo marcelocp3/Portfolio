@@ -2,14 +2,14 @@
 
 Otimizador de carteiras em Haskell para o Projeto 2 da disciplina de Programacao Funcional.
 
-O programa avalia carteiras long-only escolhendo 20 das 30 acoes do Dow Jones, sorteando pesos viaveis com soma 1 e limite de 20% por ativo. Para cada carteira simulada, calcula retorno anualizado, volatilidade anualizada e Sharpe Ratio. A avaliacao das combinacoes e distribuida em paralelo, e as funcoes de calculo financeiro e simulacao de pesos sao puras.
+O programa avalia carteiras long-only com 25 ou mais ativos das 30 acoes do Dow Jones, sorteando pesos viaveis com soma 1 e limite de 20% por ativo. Para cada carteira simulada, calcula retorno anualizado, volatilidade anualizada e Sharpe Ratio. A avaliacao das combinacoes e distribuida em paralelo, e as funcoes de calculo financeiro e simulacao de pesos sao puras.
 
 ## Escopo implementado
 
 - Linguagem funcional: Haskell.
 - Dados de entrada por CSV com precos diarios.
 - Conversao de precos para retornos diarios simples.
-- Combinatoria `30 choose 20`.
+- Combinatoria para carteiras com 25 ou mais ativos: `sum (30 choose k)` para `k = 25..30`, totalizando 174.437 combinacoes.
 - Simulacao deterministica de pesos long-only.
 - Restricao de concentracao: peso maximo de 20% por ativo.
 - Calculo de retorno anualizado, volatilidade anualizada e Sharpe Ratio.
@@ -21,9 +21,9 @@ Os itens opcionais da rubrica para A+ nao foram implementados: API sob demanda, 
 ## Requisitos
 
 - GHC 9.x
-- `make` opcional
+- `cabal-install`
 
-Nao e necessario `cabal`, `stack` nem pacotes externos.
+Nao e necessario `stack` nem pacotes externos alem da biblioteca `base`.
 
 ## Formato dos dados
 
@@ -58,27 +58,34 @@ Os metadados da coleta ficam em `data/dow30_prices_2025H2.source.txt`.
 ## Como compilar
 
 ```bash
-make build
+cabal build
 ```
 
-Comando equivalente sem `make`:
+O executavel fica no diretorio de build do Cabal. Para descobrir o caminho exato:
 
 ```bash
-ghc -O2 -threaded -rtsopts -isrc app/Main.hs -o portfolio
+cabal list-bin portfolio
 ```
 
-Em alguns ambientes Linux, o GHC encontra `libgmp.so.10`, mas nao encontra o symlink de desenvolvimento `libgmp.so`. O `Makefile` cria um symlink local ignorado pelo Git quando isso acontece.
+Tambem e possivel compilar e executar em um unico comando com `cabal run`.
+O arquivo `.cabal` ja ativa `-O2`, `-threaded` e `-rtsopts`, portanto o executavel aceita opcoes de RTS como `+RTS -N`.
+
+Em alguns ambientes Linux, se o linker reclamar de `libgmp.so`, instale o pacote de desenvolvimento da GMP. Em Debian/Ubuntu:
+
+```bash
+sudo apt install libgmp-dev
+```
 
 ## Como testar rapidamente
 
 ```bash
-make run-sample
+cabal run portfolio -- --input data/sample_prices.csv --min-assets 25 --sims 1000 --workers 4 --limit-combinations 20 +RTS -N4
 ```
 
-Ou:
+Se preferir executar o binario ja compilado:
 
 ```bash
-./portfolio --input data/sample_prices.csv --choose 20 --sims 1000 --workers 4 --limit-combinations 20 +RTS -N4
+$(cabal list-bin portfolio) --input data/sample_prices.csv --min-assets 25 --sims 1000 --workers 4 --limit-combinations 20 +RTS -N4
 ```
 
 ## Como executar o projeto completo
@@ -86,22 +93,44 @@ Ou:
 Depois de preencher `data/dow30_prices_2025H2.csv`:
 
 ```bash
-./portfolio --input data/dow30_prices_2025H2.csv --choose 20 --sims 1000000 --workers 8 +RTS -N8
+cabal run portfolio -- --input data/dow30_prices_2025H2.csv --min-assets 25 --sims 1000000 --workers 8 +RTS -N8
 ```
 
-Observacao: a execucao completa e muito pesada. O enunciado estima aproximadamente 30 milhoes de combinacoes, cada uma com 1 milhao de simulacoes. Para validar a logica antes de rodar tudo, use `--limit-combinations`.
+Observacao: a execucao completa continua pesada, mas o aviso do professor reduz a combinatoria para 174.437 conjuntos de ativos. Cada conjunto ainda recebe 1 milhao de simulacoes por padrao. Para validar a logica antes de rodar tudo, use `--limit-combinations`.
 
 Exemplo:
 
 ```bash
-./portfolio --input data/dow30_prices_2025H2.csv --choose 20 --sims 10000 --workers 8 --limit-combinations 100 +RTS -N8
+cabal run portfolio -- --input data/dow30_prices_2025H2.csv --min-assets 25 --sims 10000 --workers 4 --limit-combinations 1000 +RTS -N4
 ```
+
+## Paralelismo com `+RTS -N`
+
+O programa tem duas configuracoes relacionadas a paralelismo:
+
+- `--workers N`: quantidade de threads de trabalho criadas pelo programa.
+- `+RTS -Nn`: quantidade de capacidades do runtime Haskell, isto e, quantas threads Haskell podem executar em paralelo.
+
+Para melhor aproveitamento da CPU, use valores alinhados:
+
+```bash
+cabal run portfolio -- --workers 8 +RTS -N8
+```
+
+Tambem e possivel deixar o RTS usar todos os nucleos detectados:
+
+```bash
+cabal run portfolio -- --workers 0 +RTS -N
+```
+
+Use `+RTS -N4`, `+RTS -N8` etc. para fixar um numero. A forma correta inclui o hifen antes de `N`; `+RTS N` nao ativa o paralelismo do RTS.
 
 ## Opcoes da CLI
 
 ```text
 --input PATH              CSV Date,TICKER1,... com precos diarios
---choose N                quantidade de ativos por carteira (padrao: 20)
+--min-assets N           quantidade minima de ativos por carteira (padrao: 25)
+--choose N               alias legado de --min-assets
 --sims N                  simulacoes por combinacao (padrao: 1000000)
 --workers N               threads de trabalho (padrao: autodetectar)
 --limit-combinations N    limita combinacoes para testes
@@ -121,7 +150,7 @@ Exemplo:
 
 ## Saida
 
-A saida mostra a melhor carteira encontrada na execucao:
+A saida mostra a melhor carteira encontrada dentro dos parametros da execucao:
 
 ```text
 Melhor carteira encontrada:
@@ -133,42 +162,48 @@ AAPL: ...
 ...
 ```
 
-Exemplo de teste controlado:
+Exemplo de teste controlado mais robusto:
 
 ```bash
-./portfolio --input data/dow30_prices_2025H2.csv --choose 20 --sims 10000 --workers 4 --limit-combinations 100
+cabal run portfolio -- --input data/dow30_prices_2025H2.csv --min-assets 25 --sims 10000 --workers 4 --limit-combinations 1000 +RTS -N4
 ```
 
 ```text
 Ativos no CSV: 30
 Retornos diarios calculados: 127
-Combinacoes avaliadas nesta execucao: 100
+Tamanho das carteiras: 25 a 30 ativos
+Combinacoes avaliadas nesta execucao: 1000
 Simulacoes por combinacao: 10000
 Workers: 4
 
 Melhor carteira encontrada:
-Sharpe anualizado: 3.576961
-Retorno anualizado: 0.315189
-Volatilidade anualizada: 0.088116
+Sharpe anualizado: 3.414630
+Retorno anualizado: 0.295667
+Volatilidade anualizada: 0.086588
 Pesos:
-AAPL: 0.1049
-AMGN: 0.0018
-AMZN: 0.0034
-AXP: 0.0132
-BA: 0.0035
-CAT: 0.1146
-CRM: 0.0659
-CSCO: 0.1111
-CVX: 0.0787
-DIS: 0.0415
-GS: 0.0566
-HD: 0.0094
-HON: 0.0137
-IBM: 0.0016
-JNJ: 0.1224
-JPM: 0.0019
-KO: 0.0907
-MCD: 0.0808
-MRK: 0.0516
-WMT: 0.0326
+AAPL: 0.0629
+AMGN: 0.0436
+AMZN: 0.0063
+AXP: 0.0377
+BA: 0.0258
+CAT: 0.1013
+CRM: 0.0389
+CSCO: 0.0209
+CVX: 0.0916
+DIS: 0.0277
+GS: 0.0695
+HD: 0.0022
+HON: 0.0030
+IBM: 0.0440
+JNJ: 0.0962
+JPM: 0.0199
+KO: 0.0600
+MCD: 0.0722
+MMM: 0.0053
+MRK: 0.0281
+MSFT: 0.0229
+NVDA: 0.0260
+PG: 0.0121
+UNH: 0.0056
+WMT: 0.0762
 ```
